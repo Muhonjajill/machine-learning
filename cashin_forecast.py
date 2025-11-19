@@ -81,11 +81,11 @@ for terminal in terminals:
     print(f"\n🔮 Forecasting cashin for terminal: {terminal}")
 
     data = terminal_data.rename(columns={'trandate': 'ds', 'cashin': 'y'})
-    model = Prophet(daily_seasonality=True, weekly_seasonality=True, yearly_seasonality=False)
+    model = Prophet(daily_seasonality=False, weekly_seasonality=True,changepoint_prior_scale=0.1,  yearly_seasonality=False, seasonality_mode='additive')
     model.fit(data)
 
     # Predict next 30 days
-    future = model.make_future_dataframe(periods=30)
+    future = model.make_future_dataframe(periods=10)
     forecast = model.predict(future)
     # Ensure forecasts never go below 0
     forecast['yhat'] = forecast['yhat'].clip(lower=0)
