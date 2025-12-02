@@ -8,16 +8,18 @@ import requests
 import os
 import numpy as np
 import plotly.express as px
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 # =========================================================
-# 1️⃣ DATABASE CONNECTION
+# DATABASE CONNECTION
 # =========================================================
-
-server = '41.207.70.18,60001'
-database = 'brits_ncba'
-username = 'brits_ncba'
-password = '6fuAFMCeQvtk7L8wn5sl'
+server = os.getenv("DB_SERVER")
+database = os.getenv("DB_DATABASE")
+username = os.getenv("DB_USERNAME")
+password = os.getenv("DB_PASSWORD")
 
 connection_string = f"""
 DRIVER={{ODBC Driver 17 for SQL Server}};
@@ -30,16 +32,15 @@ TrustServerCertificate=yes;
 
 try:
     conn = pyodbc.connect(connection_string)
-    print("✅ Connected to SQL Server successfully!")
+    print("Connected to SQL Server successfully!")
 except Exception as e:
-    print("❌ Database connection failed:", e)
+    print("Database connection failed:", e)
     raise
 
 
 # =========================================================
-# 2️⃣ FETCH TRANSACTION + TERMINAL DATA
+# FETCH TRANSACTION + TERMINAL DATA
 # =========================================================
-
 query = """
 SELECT 
     t.terminalid,
@@ -56,25 +57,21 @@ WHERE
     AND tr.cashin IS NOT NULL
 """
 
-df = pd.read_sql(query, conn)   # reuse same connection
-
-# Clean data
+df = pd.read_sql(query, conn)   
 df['trandate'] = pd.to_datetime(df['trandate'])
 df['cashin'] = pd.to_numeric(df['cashin'], errors='coerce')
 
-# ⚠️ FIX: Aggregate to DAILY totals to avoid cumulative issues
 df = df.groupby(['terminalid', 'terminal_name', 'location', 
                  pd.Grouper(key='trandate', freq='D')], 
                 dropna=False).agg({'cashin': 'sum'}).reset_index()
 
 terminals = df['terminalid'].unique()
-print(f"✅ Retrieved data for {len(terminals)} terminals (joined with terminals info)")
+print(f"Retrieved data for {len(terminals)} terminals (joined with terminals info)")
 
 
 # =========================================================
-# 3️⃣ FORECAST WITH PROPHET PER TERMINAL
+# FORECAST WITH PROPHET PER TERMINAL
 # =========================================================
-
 output_dir = "forecasts"
 os.makedirs(output_dir, exist_ok=True)
 all_forecasts = []
@@ -83,19 +80,17 @@ for terminal in terminals:
     terminal_data = df[df['terminalid'] == terminal].dropna(subset=['cashin'])
 
     if len(terminal_data) < 3:
-        print(f"⚠️ Skipping {terminal} (not enough data)")
+        print(f"Skipping {terminal} (not enough data)")
         continue
 
-    print(f"\n🔮 Forecasting cashin for terminal: {terminal}")
+    print(f"\nForecasting cashin for terminal: {terminal}")
 
-    # ✅ FIX: Ensure we're using daily aggregated data
     data = (terminal_data
             .groupby(['trandate'])['cashin']
             .sum()
             .reset_index()
             .rename(columns={'trandate': 'ds', 'cashin': 'y'}))
     
-    # Remove any duplicate dates (just in case)
     data = data.drop_duplicates(subset=['ds'], keep='last')
     data = data.sort_values('ds')
 
@@ -105,8 +100,8 @@ for terminal in terminals:
         yearly_seasonality=False,
         changepoint_prior_scale=0.1,
         seasonality_mode='additive',
-        interval_width=0.80,  # ✅ Reduced from default 0.95 to make bounds tighter
-        uncertainty_samples=1000  # ✅ More samples for smoother bounds
+        interval_width=0.80,  
+        uncertainty_samples=1000  
     )
     model.fit(data)
 
@@ -116,46 +111,37 @@ for terminal in terminals:
     # ---------------------------------------------------------
     # MODEL CONFIDENCE CALCULATION
     # ---------------------------------------------------------
-
     forecast['uncertainty_width'] = forecast['yhat_upper'] - forecast['yhat_lower']
 
     mean_yhat = forecast['yhat'].replace(0, np.nan).mean()
     forecast['confidence_score'] = 1 - (forecast['uncertainty_width'] / mean_yhat)
     forecast['confidence_score'] = forecast['confidence_score'].clip(0, 1)
 
-    # Display terminal-level confidence
     terminal_conf = forecast['confidence_score'].mean()
-    print(f"📌 Confidence for {terminal}: {terminal_conf:.2f}")
+    print(f"Confidence for {terminal}: {terminal_conf:.2f}")
 
-    # ✅ Calculate realistic bounds based on historical performance
     historical_actuals = data['y'].values
     historical_predictions = model.predict(data)['yhat'].values
     prediction_errors = historical_actuals - historical_predictions
 
-    # Use Mean Absolute Error (MAE) for bounds
     mae = np.abs(prediction_errors).mean()
     std_error = np.std(prediction_errors)
 
-    # Apply tighter, more realistic bounds
     forecast['yhat_lower'] = forecast['yhat'] - (1.5 * std_error)
     forecast['yhat_upper'] = forecast['yhat'] + (1.5 * std_error)
 
-    # Ensure forecasts never go below 0
     forecast['yhat'] = forecast['yhat'].clip(lower=0)
     forecast['yhat_lower'] = forecast['yhat_lower'].clip(lower=0)
     forecast['yhat_upper'] = forecast['yhat_upper'].clip(lower=0)
 
-    # Prevent unrealistic upper bounds (cap at 3x the mean)
     mean_historical = data['y'].mean()
     forecast['yhat_upper'] = forecast['yhat_upper'].clip(upper=mean_historical * 3)
 
-    # Add metadata
     forecast['terminalid'] = terminal
     info = terminal_data[['terminal_name', 'location']].iloc[0].to_dict()
     forecast['terminal_name'] = info.get('terminal_name', '')
     forecast['location'] = info.get('location', '')
 
-    # Save chart
     plt.figure(figsize=(10, 5))
     model.plot(forecast)
     plt.title(f"Cashin Forecast - {terminal}")
@@ -179,24 +165,23 @@ fig = px.line(
     plot_df,
     x='ds',
     y=['yhat', 'yhat_lower', 'yhat_upper'],
-    title=f"📈 Cash-in Forecast for Terminal {terminal_to_plot}",
+    title=f"Cash-in Forecast for Terminal {terminal_to_plot}",
     labels={'ds': 'Date', 'value': 'Forecast (KES)'},
 )
 fig.show()
 
 
 # =========================================================
-# 4️⃣ SAVE FORECASTS & FETCH ACTUAL CASH-IN
+# SAVE FORECASTS & FETCH ACTUAL CASH-IN
 # =========================================================
-
 if all_forecasts:
     csv_path = f"{output_dir}/cashin_forecasts.csv"
     all_forecasts_df.to_csv(csv_path, index=False)
-    print(f"📂 Saved combined forecast to: {csv_path}")
+    print(f"Saved combined forecast to: {csv_path}")
 else:
-    print("⚠️ No forecasts generated.")
+    print("No forecasts generated.")
 
-print("🔄 Fetching REAL actual cash-in data...")
+print("Fetching REAL actual cash-in data...")
 
 start_date = all_forecasts_df['ds'].min().strftime('%Y-%m-%d')
 
@@ -214,9 +199,8 @@ actual_df = pd.read_sql(actual_query, conn, params=[start_date])
 
 
 # =========================================================
-# 5️⃣ MERGE FORECAST + ACTUALS + ANOMALY DETECTION
+# MERGE FORECAST + ACTUALS + ANOMALY DETECTION
 # =========================================================
-
 forecast_df = all_forecasts_df.copy()
 forecast_df['ds'] = pd.to_datetime(forecast_df['ds']).dt.date
 actual_df['trandate'] = pd.to_datetime(actual_df['trandate']).dt.date
@@ -286,23 +270,19 @@ def final_flag(row):
 
 merged['final_anomaly'] = merged.apply(final_flag, axis=1)
 
-print("✅ Merged forecast + actual data with anomaly scoring")
+print("Merged forecast + actual data with anomaly scoring")
 
 
 # =========================================================
-# 6️⃣ PREPARE DATA FOR BACKEND
+# PREPARE DATA FOR BACKEND
 # =========================================================
-
-
 export_df = merged.copy()
 
-# Convert all date columns to string
 date_cols = ['ds', 'trandate']
 for col in date_cols:
     if col in export_df.columns:
         export_df[col] = export_df[col].astype(str)
 
-# Ensure numeric fields never contain NaN or Inf
 numeric_cols = ['difference', 'percent_diff', 'actual_cashin', 'actual',
                 'yhat', 'yhat_lower', 'yhat_upper', 'roll_mean',
                 'roll_std', 'zscore']
@@ -313,34 +293,28 @@ for col in numeric_cols:
         export_df[col] = export_df[col].replace([np.inf, -np.inf], np.nan)
         export_df[col] = export_df[col].fillna(0)
 
-# Convert ALL remaining NaN → None (JSON-safe)
 export_df = export_df.where(pd.notnull(export_df), None)
 
-print("✅ Data cleaned for JSON serialization (guaranteed)")
+print("Data cleaned for JSON serialization (guaranteed)")
 
 
 
 # =========================================================
-# 7️⃣ SEND TO BACKEND API
+# SEND TO BACKEND API
 # =========================================================
 
 try:
-    backend_url = "http://localhost:5000/api/cashForecasts"
-    print(f"🚀 Sending forecast data to backend: {backend_url}")
-
-    
+    backend_url = os.getenv("BACKEND_URL") + "/api/cashForecasts"
+    print(f"Sending forecast data to backend: {backend_url}")
 
     payload = export_df.to_dict(orient='records')
-
-    
-    
 
     response = requests.post(backend_url, json=payload)
 
     if response.status_code == 200:
-        print("✅ Forecast data sent successfully to backend!")
+        print("Forecast data sent successfully to backend!")
     else:
-        print(f"❌ Failed to send data — {response.status_code}: {response.text}")
+        print(f"Failed to send data — {response.status_code}: {response.text}")
 
 except Exception as e:
-    print(f"⚠️ Error sending data to backend: {e}")
+    print(f"Error sending data to backend: {e}")

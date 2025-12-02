@@ -1,32 +1,28 @@
 #!/usr/bin/env python
-# coding: utf-8
-
-# In[1]:
-
-
-# Install dependencies if not already installed
-
-
-
-# In[2]:
-
-
 import pyodbc
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import IsolationForest
 import matplotlib.pyplot as plt
-
-
-# In[12]:
-
-
 from datetime import datetime, timedelta
 import pyodbc
-server = '41.207.70.18,60001'   # include port with comma
-database = 'brits_ncba'
-username = 'brits_ncba'
-password = '6fuAFMCeQvtk7L8wn5sl'
+import requests
+from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import StandardScaler
+import matplotlib.pyplot as plt
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+# =========================================================
+# DATABASE CONNECTION
+# =========================================================
+server = os.getenv("DB_SERVER")
+database = os.getenv("DB_DATABASE")
+username = os.getenv("DB_USERNAME")
+password = os.getenv("DB_PASSWORD")
 
 connection_string = f"""
 DRIVER={{ODBC Driver 17 for SQL Server}};
@@ -39,14 +35,14 @@ TrustServerCertificate=yes;
 
 try:
     conn = pyodbc.connect(connection_string)
-    print("✅ Connected to SQL Server successfully!")
+    print("Connected to SQL Server successfully!")
 except Exception as e:
-    print("❌ Database connection failed:", e)
+    print("Database connection failed:", e)
     raise
 
 
 # -----------------------------
-# 2. LOAD LAST 180 DAYS
+# LOAD LAST 180 DAYS
 # -----------------------------
 START_DATE = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
 
@@ -61,18 +57,13 @@ ORDER BY terminalid, trandate
 
 df = pd.read_sql(sql_tx, conn)
 df['trandate'] = pd.to_datetime(df['trandate'])
-#print(df.head())
 
-#. Transaction-Level Feature Engineering
-# Sort so rolling windows work correctly
 df = df.sort_values(['custid', 'trandate']).reset_index(drop=True)
 
-# Transaction level features
 df['hour'] = df['trandate'].dt.hour
-df['day_of_week'] = df['trandate'].dt.dayofweek   # 0 = Monday
+df['day_of_week'] = df['trandate'].dt.dayofweek   
 df['day'] = df['trandate'].dt.date
 
-#B. Aggregate Customer Daily Features
 daily = df.groupby(['custid', 'custname', 'day']).agg(
     total_cashin = ('cashin', 'sum'),
     txn_count = ('cashin', 'count'),
@@ -81,13 +72,10 @@ daily = df.groupby(['custid', 'custname', 'day']).agg(
     min_txn = ('cashin', 'min')
 ).reset_index()
 
-# Convert day to datetime
 daily['day'] = pd.to_datetime(daily['day'])
 
-# C. Advanced Rolling Statistics Per Customer
 daily = daily.sort_values(['custid', 'day'])
 
-# Rolling 7-day window for each customer
 daily['rolling_mean_7'] = daily.groupby('custid')['total_cashin'] \
     .transform(lambda s: s.rolling(7, min_periods=3).mean())
 
@@ -97,15 +85,12 @@ daily['rolling_std_7'] = daily.groupby('custid')['total_cashin'] \
 daily['rolling_txn_count_7'] = daily.groupby('custid')['txn_count'] \
     .transform(lambda s: s.rolling(7, min_periods=3).mean())
 
-#D. Z-Score Feature (Simple Anomaly Score)
 daily['zscore'] = (daily['total_cashin'] - daily['rolling_mean_7']) / daily['rolling_std_7']
 
-#E. Percent Change & Volatility
 daily['pct_change'] = daily.groupby('custid')['total_cashin'].pct_change()
 daily['volatility_7'] = daily.groupby('custid')['total_cashin'] \
     .transform(lambda s: s.rolling(7, min_periods=3).std())
 
-#F. Behavior Frequency Features
 daily['is_weekend'] = daily['day'].dt.dayofweek >= 5
 daily['weekday_avg'] = daily.groupby(['custid', 'is_weekend'])['total_cashin'] \
     .transform('mean')
@@ -113,29 +98,12 @@ daily['weekday_avg'] = daily.groupby(['custid', 'is_weekend'])['total_cashin'] \
 print(daily.head(10))
 print(daily.columns)
 
-
-# In[13]:
-
-
-# Step 2 — LIGHTWEIGHT ANOMALY DETECTION (based on your engineered features)
-
-# Replace infinite values from pct_change
 daily = daily.replace([np.inf, -np.inf], np.nan).fillna(0)
 
-# Simple Z-score flag
 daily['anomaly_z'] = daily['zscore'].abs() > 3
 
 print("Z-score anomalies:", daily['anomaly_z'].sum())
 
-
-# In[15]:
-
-
-#Step 3 — MACHINE LEARNING MODEL: IsolationForest
-from sklearn.ensemble import IsolationForest
-from sklearn.preprocessing import StandardScaler
-
-# ML features
 features = [
     'total_cashin', 'txn_count', 'avg_txn_size',
     'rolling_mean_7', 'rolling_std_7',
@@ -144,11 +112,9 @@ features = [
 
 X = daily[features].fillna(0).values
 
-# Standardize
 scaler = StandardScaler()
 Xs = scaler.fit_transform(X)
 
-# Global model
 iso = IsolationForest(
     n_estimators=200,
     contamination=0.01,
@@ -164,10 +130,7 @@ daily['iso_score'] = iso.decision_function(Xs)
 # ----------------------------------------------------
 # CONFIDENCE TESTING SECTION
 # ----------------------------------------------------
-
-
-
-print("\n🔍 Running model confidence evaluation...")
+print("\nRunning model confidence evaluation...")
 
 def stability_test(Xs, runs=5, sample_fraction=0.8):
     """Runs IsolationForest multiple times to check stability."""
@@ -195,10 +158,7 @@ def stability_test(Xs, runs=5, sample_fraction=0.8):
     return np.mean(pair_similarities)
 
 stability_score = stability_test(Xs)
-print(f"🔵 Model Stability Score: {stability_score:.3f}")
-
-
-# Temporal train-test split (70/30)
+print(f"Model Stability Score: {stability_score:.3f}")
 split_day = daily['day'].quantile(0.7)
 
 train = daily[daily['day'] <= split_day]
@@ -217,12 +177,9 @@ iso_tmp.fit(X_train)
 test_preds = iso_tmp.predict(X_test)
 test_scores = iso_tmp.decision_function(X_test)
 
-# Score separation metric
 separation = np.mean(test_scores[test_preds == 1]) - np.mean(test_scores[test_preds == -1])
-print(f"🟣 Out-of-Sample Score Separation: {separation:.4f}")
+print(f"Out-of-Sample Score Separation: {separation:.4f}")
 
-
-# Customer-level confidence: stability + score distribution
 daily['score_abs'] = daily['iso_score'].abs()
 
 cust_conf = daily.groupby(['custid', 'custname']).agg(
@@ -230,18 +187,16 @@ cust_conf = daily.groupby(['custid', 'custname']).agg(
     anomaly_rate=('iso_flag', 'mean')
 ).reset_index()
 
-# Normalize mean_score
 cust_conf['confidence'] = (
     cust_conf['mean_score'] / cust_conf['mean_score'].max()
 ).clip(0, 1)
 
-print("\n🟢 CUSTOMER CONFIDENCE SUMMARY:")
+print("\nCUSTOMER CONFIDENCE SUMMARY:")
 print(cust_conf[['custid', 'custname', 'confidence']].head(10))
 
-# Prepare anomalies payload (list of dicts)
 anomalies = daily[daily['iso_flag'] == True].copy()
-# Combine everything into 0–1 confidence score
-sep_norm = np.tanh(separation)  # safe -1..1 mapping
+
+sep_norm = np.tanh(separation)  
 
 global_confidence = (
     0.5 * stability_score +
@@ -252,13 +207,8 @@ global_confidence = (
 global_confidence = float(np.clip(global_confidence, 0, 1))
 
 
-print(f"\n🔥 FINAL SCRIPT CONFIDENCE SCORE: {global_confidence:.3f}")
+print(f"\nFINAL SCRIPT CONFIDENCE SCORE: {global_confidence:.3f}")
 
-
-# Prepare anomalies payload (list of dicts)
-#anomalies = daily[daily['iso_flag'] == True].copy()
-
-# Select columns to send (you can add more)
 cols_to_send = [
     'custid', 'custname', 'day', 'total_cashin', 'txn_count',
     'avg_txn_size', 'rolling_mean_7', 'rolling_std_7',
@@ -266,17 +216,8 @@ cols_to_send = [
 ]
 
 payload = anomalies[cols_to_send].to_dict(orient='records')
-print(f"✅ Detected {len(payload)} anomalies via IsolationForest")
+print(f"Detected {len(payload)} anomalies via IsolationForest")
 
-
-
-
-# In[18]:
-
-
-import matplotlib.pyplot as plt
-
-# Step 1 — Get top 10 customers with most anomalies
 top10_custs = (
     daily[daily['iso_flag'] == True]
     .groupby(['custid', 'custname'])
@@ -286,7 +227,6 @@ top10_custs = (
     .head(10)
 )
 
-# Step 2 — Loop through each customer and plot
 for idx, row in top10_custs.iterrows():
     custid = row['custid']
     custname = row['custname']
@@ -308,10 +248,6 @@ for idx, row in top10_custs.iterrows():
     plt.legend()
     plt.show()
 
-
-# In[19]:
-
-
 plt.figure(figsize=(10,5))
 plt.hist(daily['iso_score'], bins=50)
 plt.title("IsolationForest Score Distribution")
@@ -319,25 +255,20 @@ plt.xlabel("Score")
 plt.ylabel("Count")
 plt.close() 
 
-
-import requests
-
-def send_anomalies(payload, backend_url="http://localhost:5000/api/anomalies"):
+def send_anomalies(payload, backend_url = os.getenv("BACKEND_URL") + "/api/anomalies"):
     try:
         resp = requests.post(backend_url, json=payload, timeout=30)
         resp.raise_for_status()
-        print("✅ Sent anomalies to backend:", resp.status_code)
+        print("Sent anomalies to backend:", resp.status_code)
     except Exception as e:
-        print("❌ Failed to send anomalies:", e)
+        print("Failed to send anomalies:", e)
 
-# Prepare payload
 anomalies = daily[daily['iso_flag'] == True].copy()
 
 anomalies['day'] = anomalies['day'].dt.strftime("%Y-%m-%d")
 cols_to_send = ['custid','custname','day','total_cashin','txn_count','avg_txn_size','iso_score','zscore']
 payload = anomalies[cols_to_send].to_dict(orient='records')
 
-# Send to backend
 send_anomalies(payload)
 
 
