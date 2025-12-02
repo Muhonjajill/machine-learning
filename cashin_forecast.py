@@ -51,7 +51,8 @@ FROM [transactions] AS tr
 JOIN [terminals] AS t
     ON tr.terminalid = t.terminalid
 WHERE 
-    tr.trandate >= DATEADD(DAY, -180, GETDATE())
+    tr.trandate >= '2025-01-01'
+
     AND tr.cashin IS NOT NULL
 """
 
@@ -60,6 +61,11 @@ df = pd.read_sql(query, conn)   # reuse same connection
 # Clean data
 df['trandate'] = pd.to_datetime(df['trandate'])
 df['cashin'] = pd.to_numeric(df['cashin'], errors='coerce')
+
+# ⚠️ FIX: Aggregate to DAILY totals to avoid cumulative issues
+df = df.groupby(['terminalid', 'terminal_name', 'location', 
+                 pd.Grouper(key='trandate', freq='D')], 
+                dropna=False).agg({'cashin': 'sum'}).reset_index()
 
 terminals = df['terminalid'].unique()
 print(f"✅ Retrieved data for {len(terminals)} terminals (joined with terminals info)")
@@ -82,24 +88,66 @@ for terminal in terminals:
 
     print(f"\n🔮 Forecasting cashin for terminal: {terminal}")
 
-    data = terminal_data.rename(columns={'trandate': 'ds', 'cashin': 'y'})
+    # ✅ FIX: Ensure we're using daily aggregated data
+    data = (terminal_data
+            .groupby(['trandate'])['cashin']
+            .sum()
+            .reset_index()
+            .rename(columns={'trandate': 'ds', 'cashin': 'y'}))
+    
+    # Remove any duplicate dates (just in case)
+    data = data.drop_duplicates(subset=['ds'], keep='last')
+    data = data.sort_values('ds')
 
     model = Prophet(
         daily_seasonality=False,
         weekly_seasonality=True,
         yearly_seasonality=False,
         changepoint_prior_scale=0.1,
-        seasonality_mode='additive'
+        seasonality_mode='additive',
+        interval_width=0.80,  # ✅ Reduced from default 0.95 to make bounds tighter
+        uncertainty_samples=1000  # ✅ More samples for smoother bounds
     )
     model.fit(data)
 
     future = model.make_future_dataframe(periods=10)
     forecast = model.predict(future)
 
+    # ---------------------------------------------------------
+    # MODEL CONFIDENCE CALCULATION
+    # ---------------------------------------------------------
+
+    forecast['uncertainty_width'] = forecast['yhat_upper'] - forecast['yhat_lower']
+
+    mean_yhat = forecast['yhat'].replace(0, np.nan).mean()
+    forecast['confidence_score'] = 1 - (forecast['uncertainty_width'] / mean_yhat)
+    forecast['confidence_score'] = forecast['confidence_score'].clip(0, 1)
+
+    # Display terminal-level confidence
+    terminal_conf = forecast['confidence_score'].mean()
+    print(f"📌 Confidence for {terminal}: {terminal_conf:.2f}")
+
+    # ✅ Calculate realistic bounds based on historical performance
+    historical_actuals = data['y'].values
+    historical_predictions = model.predict(data)['yhat'].values
+    prediction_errors = historical_actuals - historical_predictions
+
+    # Use Mean Absolute Error (MAE) for bounds
+    mae = np.abs(prediction_errors).mean()
+    std_error = np.std(prediction_errors)
+
+    # Apply tighter, more realistic bounds
+    forecast['yhat_lower'] = forecast['yhat'] - (1.5 * std_error)
+    forecast['yhat_upper'] = forecast['yhat'] + (1.5 * std_error)
+
     # Ensure forecasts never go below 0
     forecast['yhat'] = forecast['yhat'].clip(lower=0)
     forecast['yhat_lower'] = forecast['yhat_lower'].clip(lower=0)
     forecast['yhat_upper'] = forecast['yhat_upper'].clip(lower=0)
+
+    # Prevent unrealistic upper bounds (cap at 3x the mean)
+    mean_historical = data['y'].mean()
+    forecast['yhat_upper'] = forecast['yhat_upper'].clip(upper=mean_historical * 3)
 
     # Add metadata
     forecast['terminalid'] = terminal
@@ -245,13 +293,6 @@ print("✅ Merged forecast + actual data with anomaly scoring")
 # 6️⃣ PREPARE DATA FOR BACKEND
 # =========================================================
 
-# =========================================================
-# 6️⃣ PREPARE DATA FOR BACKEND (Bulletproof)
-# =========================================================
-
-# =========================================================
-# 6️⃣ PREPARE DATA FOR BACKEND (Bulletproof)
-# =========================================================
 
 export_df = merged.copy()
 

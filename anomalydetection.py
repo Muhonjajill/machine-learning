@@ -160,8 +160,103 @@ iso.fit(Xs)
 daily['iso_flag'] = iso.predict(Xs) == -1
 daily['iso_score'] = iso.decision_function(Xs)
 
+
+# ----------------------------------------------------
+# CONFIDENCE TESTING SECTION
+# ----------------------------------------------------
+
+
+
+print("\n🔍 Running model confidence evaluation...")
+
+def stability_test(Xs, runs=5, sample_fraction=0.8):
+    """Runs IsolationForest multiple times to check stability."""
+    flags = []
+
+    for i in range(runs):
+        iso_tmp = IsolationForest(
+            n_estimators=200,
+            contamination=0.01,
+            random_state=42 + i
+        )
+        idx = np.random.choice(len(Xs), int(len(Xs) * sample_fraction), replace=False)
+        iso_tmp.fit(Xs[idx])
+        preds = (iso_tmp.predict(Xs) == -1).astype(int)
+        flags.append(preds)
+
+    flags = np.array(flags)
+    pair_similarities = []
+
+    for i in range(runs):
+        for j in range(i + 1, runs):
+            sim = np.mean(flags[i] == flags[j])
+            pair_similarities.append(sim)
+
+    return np.mean(pair_similarities)
+
+stability_score = stability_test(Xs)
+print(f"🔵 Model Stability Score: {stability_score:.3f}")
+
+
+# Temporal train-test split (70/30)
+split_day = daily['day'].quantile(0.7)
+
+train = daily[daily['day'] <= split_day]
+test = daily[daily['day'] > split_day]
+
+X_train = scaler.fit_transform(train[features].fillna(0))
+X_test = scaler.transform(test[features].fillna(0))
+
+iso_tmp = IsolationForest(
+    n_estimators=200,
+    contamination=0.01,
+    random_state=123
+)
+iso_tmp.fit(X_train)
+
+test_preds = iso_tmp.predict(X_test)
+test_scores = iso_tmp.decision_function(X_test)
+
+# Score separation metric
+separation = np.mean(test_scores[test_preds == 1]) - np.mean(test_scores[test_preds == -1])
+print(f"🟣 Out-of-Sample Score Separation: {separation:.4f}")
+
+
+# Customer-level confidence: stability + score distribution
+daily['score_abs'] = daily['iso_score'].abs()
+
+cust_conf = daily.groupby(['custid', 'custname']).agg(
+    mean_score=('score_abs', 'mean'),
+    anomaly_rate=('iso_flag', 'mean')
+).reset_index()
+
+# Normalize mean_score
+cust_conf['confidence'] = (
+    cust_conf['mean_score'] / cust_conf['mean_score'].max()
+).clip(0, 1)
+
+print("\n🟢 CUSTOMER CONFIDENCE SUMMARY:")
+print(cust_conf[['custid', 'custname', 'confidence']].head(10))
+
 # Prepare anomalies payload (list of dicts)
 anomalies = daily[daily['iso_flag'] == True].copy()
+# Combine everything into 0–1 confidence score
+sep_norm = np.tanh(separation)  # safe -1..1 mapping
+
+global_confidence = (
+    0.5 * stability_score +
+    0.3 * sep_norm +
+    0.2 * (1 - anomalies.shape[0] / len(daily))
+)
+
+global_confidence = float(np.clip(global_confidence, 0, 1))
+
+
+print(f"\n🔥 FINAL SCRIPT CONFIDENCE SCORE: {global_confidence:.3f}")
+
+
+# Prepare anomalies payload (list of dicts)
+#anomalies = daily[daily['iso_flag'] == True].copy()
 
 # Select columns to send (you can add more)
 cols_to_send = [
