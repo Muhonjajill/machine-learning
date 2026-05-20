@@ -1,0 +1,77 @@
+C:\Users\Administrator\Desktop\CUSTOMIZED PORTAL\machine-model\cashin_forecast.py:76: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(query, conn)
+C:\Users\Administrator\Desktop\CUSTOMIZED PORTAL\machine-model\cashin_forecast.py:216: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  actual_df = pd.read_sql(actual_query, conn, params=[start_date])
+Connected to SQL Server successfully!
+Retrieved data for 23 terminals (joined with terminals info)
+
+Forecasting cashin for terminal: CDM12212121
+Confidence for CDM12212121: 1.00
+
+Forecasting cashin for terminal: CDM221
+Confidence for CDM221: 1.00
+Skipping CDM22567 (not enough data)
+
+Forecasting cashin for terminal: CDM527
+Confidence for CDM527: 0.37
+Skipping CDM592 (not enough data)
+
+Forecasting cashin for terminal: CDM598
+Confidence for CDM598: 1.00
+
+Forecasting cashin for terminal: CDMARTC001
+Confidence for CDMARTC001: 1.00
+
+Forecasting cashin for terminal: CDMARTC002
+Confidence for CDMARTC002: 0.90
+
+Forecasting cashin for terminal: CDMARTC003
+Confidence for CDMARTC003: 0.98
+
+Forecasting cashin for terminal: CDMARTC004
+Confidence for CDMARTC004: 0.85
+
+Forecasting cashin for terminal: CDMARTC005
+Confidence for CDMARTC005: 0.00
+
+Forecasting cashin for terminal: CDMARTC006
+Confidence for CDMARTC006: 0.00
+
+Forecasting cashin for terminal: CDMARTC007
+Confidence for CDMARTC007: 0.88
+
+Forecasting cashin for terminal: CDMARTC008
+Confidence for CDMARTC008: 0.01
+
+Forecasting cashin for terminal: CDMARTC009
+Confidence for CDMARTC009: 0.63
+
+Forecasting cashin for terminal: CDMFPW001
+Confidence for CDMFPW001: 0.00
+
+Forecasting cashin for terminal: CDMGAG001
+Confidence for CDMGAG001: 0.00
+
+Forecasting cashin for terminal: CDMKGL0001
+Confidence for CDMKGL0001: 0.99
+
+Forecasting cashin for terminal: CDMMEL0001
+Confidence for CDMMEL0001: 1.00
+
+Forecasting cashin for terminal: CDMNAW002
+Confidence for CDMNAW002: 1.00
+
+Forecasting cashin for terminal: CDMOTWL0001
+Confidence for CDMOTWL0001: 0.00
+
+Forecasting cashin for terminal: CDMSHSM0001
+Confidence for CDMSHSM0001: 1.00
+
+Forecasting cashin for terminal: NCBA0001
+Confidence for NCBA0001: 0.52
+Saved combined forecast to: forecasts/cashin_forecasts.csv
+Fetching REAL actual cash-in data...
+Merged forecast + actual data with anomaly scoring
+Data cleaned for JSON serialization (guaranteed)
+Sending forecast data to backend: http://localhost:5000/api/cashForecasts
+Error sending data to backend: HTTPConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /api/cashForecasts (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x000001C81F5F41A0>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))

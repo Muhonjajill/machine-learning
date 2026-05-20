@@ -1,0 +1,7 @@
+C:\Users\Administrator\Desktop\CUSTOMIZED PORTAL\machine-model\cashin_forecast.py:76: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(query, conn)
+C:\Users\Administrator\AppData\Local\Programs\Python\Python313\Lib\site-packages\prophet\plot.py:69: RuntimeWarning: More than 20 figures have been opened. Figures created through the pyplot interface (`matplotlib.pyplot.figure`) are retained until explicitly closed and may consume too much memory. (To control this warning, see the rcParam `figure.max_open_warning`). Consider using `matplotlib.pyplot.close()`.
+  fig = plt.figure(facecolor='w', figsize=figsize)
+C:\Users\Administrator\Desktop\CUSTOMIZED PORTAL\machine-model\cashin_forecast.py:163: RuntimeWarning: More than 20 figures have been opened. Figures created through the pyplot interface (`matplotlib.pyplot.figure`) are retained until explicitly closed and may consume too much memory. (To control this warning, see the rcParam `figure.max_open_warning`). Consider using `matplotlib.pyplot.close()`.
+  plt.figure(figsize=(10, 5))
+^C

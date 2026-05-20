@@ -1,0 +1,24 @@
+[
+  {
+    "received_at": "2026-02-18T10:42:59.494198",
+    "custid": "27866497",
+    "custname": "Ronak Shah",
+    "day": "2025-10-29",
+    "total_cashin": 3284000.0,
+    "txn_count": 3,
+    "avg_txn_size": 1094666.6666666667,
+    "iso_score": -0.002110364779082552,
+    "zscore": 1.149970744027683
+  },
+  {
+    "received_at": "2026-02-18T10:42:59.494198",
+    "custid": "45445444",
+    "custname": "John Kamau",
+    "day": "2026-01-08",
+    "total_cashin": 12253000.0,
+    "txn_count": 3,
+    "avg_txn_size": 4084333.3333333335,
+    "iso_score": -0.12373170731037719,
+    "zscore": 1.6892002314619634
+  }
+]

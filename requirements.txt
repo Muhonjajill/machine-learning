@@ -1,0 +1,24 @@
+# FastAPI and ASGI server
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+
+# Database
+pyodbc==5.0.1
+
+# Data processing
+pandas==2.1.4
+numpy==1.26.3
+
+# Machine learning
+scikit-learn==1.4.0
+prophet==1.1.5
+
+# Scheduling
+APScheduler==3.10.4
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Optional: Logging and monitoring
+python-json-logger==2.0.7

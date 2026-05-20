@@ -1,0 +1,43 @@
+C:\Users\Administrator\Desktop\CUSTOMIZED PORTAL\machine-model\anomalydetection.py:58: UserWarning: pandas only supports SQLAlchemy connectable (engine/connection) or database string URI or sqlite3 DBAPI2 connection. Other DBAPI2 objects are not tested. Please consider using SQLAlchemy.
+  df = pd.read_sql(sql_tx, conn)
+Connected to SQL Server successfully!
+      custid       custname        day  ...  volatility_7  is_weekend  weekday_avg
+0   07785794     Blue River 2025-11-26  ...           NaN       False      21500.0
+1      15207                2025-11-26  ...           NaN       False      11000.0
+2   20005594  Fabian Mbatha 2025-11-20  ...           NaN       False      27900.0
+3   20005594  Fabian Mbatha 2025-11-21  ...           NaN       False      27900.0
+4   21691014  John Odhiambo 2025-10-28  ...           NaN       False    1314750.0
+5   21691014  John Odhiambo 2025-11-20  ...           NaN       False    1314750.0
+6   21691014  John Odhiambo 2025-11-21  ...  1.336697e+06       False    1314750.0
+7   21691014  John Odhiambo 2025-11-22  ...  1.253924e+06        True      80000.0
+8   23456789       qwertyui 2025-11-26  ...           NaN       False      20000.0
+9  234567890          kimme 2025-11-26  ...           NaN       False      20000.0
+
+[10 rows x 16 columns]
+Index(['custid', 'custname', 'day', 'total_cashin', 'txn_count',
+       'avg_txn_size', 'max_txn', 'min_txn', 'rolling_mean_7', 'rolling_std_7',
+       'rolling_txn_count_7', 'zscore', 'pct_change', 'volatility_7',
+       'is_weekend', 'weekday_avg'],
+      dtype='object')
+Z-score anomalies: 0
+
+Running model confidence evaluation...
+Model Stability Score: 0.991
+Out-of-Sample Score Separation: 0.3474
+
+CUSTOMER CONFIDENCE SUMMARY:
+      custid       custname  confidence
+0   07785794     Blue River    0.999841
+1      15207                   0.994243
+2   20005594  Fabian Mbatha    0.940242
+3   21691014  John Odhiambo    0.627726
+4   23456789       qwertyui    1.000000
+5  234567890          kimme    1.000000
+6  234567890         wertyu    1.000000
+7   23994360  Michael Mutua    0.672603
+8   25531560   John Njuguna    0.938159
+9   25684301    Ruth Wangui    0.925568
+
+FINAL SCRIPT CONFIDENCE SCORE: 0.793
+Detected 2 anomalies via IsolationForest
+Sent anomalies to backend: 201

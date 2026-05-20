@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "C:\Users\Administrator\Desktop\CUSTOMIZED PORTAL\machine-model\anomalydetection.py", line 5, in <module>
+    from sklearn.ensemble import IsolationForest
+ModuleNotFoundError: No module named 'sklearn'
